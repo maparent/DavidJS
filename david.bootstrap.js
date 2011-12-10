@@ -37,7 +37,7 @@ david.Bootstrap.addLoadedCallback(function(){alert("The modules have been loaded
 // TODO: Implement caching flag to add time to URL if not set, forcing the browser not to cache
 // TODO: Implement using the sessionID as part of the url if david.browser is available
 
-var require, define, david, $jQ, $BB;
+var require, define, david, $jQ, $bb;
 (function() {
     
     /** 
@@ -78,7 +78,7 @@ var require, define, david, $jQ, $BB;
     // Ensure david is defined
     david = typeof(david) == 'undefined' ? function(){} : david;
     // Ensure console is defined, for browsers that do not support
-    console = typeof(console) == 'undefined' ? {log : function(){}} : console;
+    console = typeof(console) == 'undefined' ? {log : function(tcMessage){}, error : function(tcMessage){}} : console;
 
     // Create david.utilities for some core utilities, these may be overwritten by david when it is loaded
     david.utilities = typeof(david.utilities) == 'undefined' ? function(){} : david.utilities;
@@ -152,15 +152,15 @@ var require, define, david, $jQ, $BB;
             /**
              * Gets the full path for the module specified
              */ 
-            getPath : function(tcModuleName)
+            getPath : function(tcModuleName, tcModulePath)
             {
-                return m_oPaths[tcModuleName] || (this.extractModuleInfo(tcModuleName).url);
+                return m_oPaths[tcModuleName] || tcModulePath + tcModuleName +".js?version=" + david.Bootstrap.getCacheBuster();
             },
             
             // GET/SET the context
             pushContext : function(toModule){m_aContext[m_aContext.length] = toModule;},
             peekContext : function(){return m_aContext.length > 0 ? m_aContext[m_aContext.length-1] : null;},
-            popContext : function(){var loReturn = this.peekContext(); m_aContext.length = m_aContext.length-1},
+            popContext : function(){var loReturn = this.peekContext(); m_aContext.length = m_aContext.length-1; return loReturn;},
 
             /**
              * helper function to extract the name and path from the url
@@ -175,7 +175,6 @@ var require, define, david, $jQ, $BB;
                     plugin : llAnonymous ? "" : tcModuleURL.replace(/!?[^!]+$/g, "")
                     };
                 loInfo.path = (/^[./]/.test(loInfo.path)) ? loInfo.path : david.Bootstrap.getDefaultRoot() + loInfo.path;
-                loInfo.url = loInfo.path + loInfo.name + ".js?version=" + david.Bootstrap.getCacheBuster();
                 return loInfo;
             },
         
@@ -425,6 +424,9 @@ var require, define, david, $jQ, $BB;
 
             // Name of the module
             var m_cName = "";
+            
+            // The path for the module
+            var m_cPath = "";
 
             // List of dependencies (contains Module objects)
             var m_aDependencies = [];
@@ -454,9 +456,13 @@ var require, define, david, $jQ, $BB;
             // GETS/SETS the name of the module
             this.getName = function(){return m_cName;};
             this.setName = function(tcName){m_cName = tcName.toLowerCase();};
+            
+            // GETS/SETS the path of this module
+            this.getPath = function(){return m_cPath};
+            this.setPath = function(tcPath){m_cPath = tcPath;};
 
             // GETS the URL for this module
-            this.getURL = function(){return david.Bootstrap.getPath(this.getName());};
+            this.getURL = function(){return david.Bootstrap.getPath(this.getName(), this.getPath());};
             
             // Adds the module to the list of modules that are being blocked by this script
             this.addBlockedScript = function(toModule)
@@ -505,20 +511,21 @@ var require, define, david, $jQ, $BB;
                 if (tcName)
                 {
                     var loInfo = david.Bootstrap.extractModuleInfo(tcName);
-                    tcName = loInfo.name;
+                    var lcName = loInfo.name;
                     // Make sure this module did not already have it as a dependency
                     // No need to report an error if dependency already exists
-                    if (!this.hasDependency(tcName))
+                    if (!this.hasDependency(lcName) && !this.hasDependency(tcName))
                     {
                         // TODO: Manage plugins as plugins.
                         var lcPlugin = loInfo.plugin;
                         if (lcPlugin === "order")
                         {
                             console.log("synch locking dependency " + tcName + " to " + this.getName());
-                            this.addSyncLock(tcName);
+                            this.addSyncLock(lcName);
                         }
                         console.log("Adding dependency " + tcName + " to " + this.getName());
                         m_aDependencies[m_aDependencies.length] = tcName;
+                        
                     }
                 }
             },
@@ -571,7 +578,7 @@ var require, define, david, $jQ, $BB;
                     }
                     catch(ex)
                     {
-                        console.log("Callback failed - \n" + m_aLoadedCallbacks[i] + "\n\n\n" + ex);
+                        console.error("Callback failed - \n" + m_aLoadedCallbacks[i] + "\n\n\n" + ex);
                     }
                 }
                 m_aLoadedCallbacks.length = 0;
@@ -619,6 +626,7 @@ var require, define, david, $jQ, $BB;
             //-------------------------------
             this.setName(toModule.name);
             this.setDefinition(toModule.definition);
+            this.setPath(toModule.path || toModule.name);
             
             for (var i=0, lnLength = (toModule.dependencies || []).length; i<lnLength; i++)
             {
@@ -798,7 +806,7 @@ var require, define, david, $jQ, $BB;
         {
             if (!this.isLoaded())
             {
-                console.log("ADDING SCRIPT for " + this.getName());
+                console.log("ADDING SCRIPT for " + this.getName() + "(URL: "+ tcURL + ")");
                 // Check if a script already exists on the page with this module
                 var laScripts = document.getElementsByTagName("script");
                 for (var i=0, lnLength = laScripts.length; i<lnLength; i++)
@@ -928,7 +936,7 @@ var require, define, david, $jQ, $BB;
         var loRootModule = david.Bootstrap.getModule(taModules[0]);
         if (loRootModule == null)
         {
-            console.log("REQUIRE - Preaparing " + taModules[0]);
+            console.log("REQUIRE - Preparing " + taModules[0]);
             loRootModule = david.Bootstrap.addModule({
                         name:taModules[0],  
                         definition : null,
@@ -943,7 +951,7 @@ var require, define, david, $jQ, $BB;
             // We don't need to load the first module it is the root
             for (var i=taModules.length-1, lnLength = 1; i>=lnLength; i--)
             {
-                console.log("REQUIRE - Preaparing dependency " + taModules[0] + "/" + taModules[i]);
+                console.log("REQUIRE - Preparing dependency " + taModules[0] + "/" + taModules[i]);
                 var loInfo = david.Bootstrap.extractModuleInfo(taModules[i]);
                 var loModule = david.Bootstrap.getModule(taModules[i]);
                 if (loModule == null)
@@ -1000,9 +1008,9 @@ var require, define, david, $jQ, $BB;
     require.config({
         baseUrl: "/resources/inc/javascript/",
         paths: {
-            "underscore" : "/resources/inc/javascript/lib/underscore.js",
-            "backbone" : "/resources/inc/javascript/lib/backbone-min.js",
-            "jquery" : "/resources/inc/javascript/lib/jquery-1.7.min.js"
+            "underscore" : "/resources/inc/javascript/lib/underscore.js?version=" + david.Bootstrap.getCacheBuster(),
+            "backbone" : "/resources/inc/javascript/lib/backbone-min.js?version=" + david.Bootstrap.getCacheBuster(),
+            "jquery" : "/resources/inc/javascript/lib/jquery-1.7.min.js?version=" + david.Bootstrap.getCacheBuster()
         },
         cachebuster : 1.0
     });
@@ -1066,12 +1074,12 @@ var require, define, david, $jQ, $BB;
             return $jQ;
         });
         
-        require(["order!backbone"], function($bb)
+        require(["order!backbone"], function(backbone)
         {
-            $BB = Backbone.noConflict();
+            $bb = Backbone.noConflict();
             
             define("backbone", function(){
-                return $BB;
+                return $bb;
             });
             
             require(["david"]);

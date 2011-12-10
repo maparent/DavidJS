@@ -8,9 +8,9 @@ This module should be loaded using david.Bootstrap.
 
 ====================================*/
 
-
 define(["david.utilities", "order!jquery", "order!underscore", "order!backbone"],
     function($du, $jQ, _, $bb){
+        
         
         // The name of the attribute to search for plugin modules
         var DAVIDPLUGIN = "data-module";
@@ -29,6 +29,36 @@ define(["david.utilities", "order!jquery", "order!underscore", "order!backbone"]
                 $du.initialiseModule(toModule, toElement, tnIndex, toElement.attr(INITOVERRIDE));
             });
         });
+        
+        
+        
+        /**
+         * Creates an object for the namespace specified, or if the namespace exists
+         * returns that namespace
+         */
+        david.namespace = function(tcNamespace)
+        {   
+            var laParts = tcNamespace.split('.');
+
+            window[laParts[0]] = window[laParts[0]] ? window[laParts[0]] : {};
+            var loCurrent = window[laParts[0]];
+
+            for (var i = 1, lnLength=laParts.length; i<lnLength; i++)
+            {
+                if (!loCurrent[laParts[i]])
+                {
+                    loCurrent[laParts[i]] = {};
+                }
+                loCurrent = loCurrent[laParts[i]];
+            }
+            return loCurrent;
+        }
+        
+        
+        
+        
+        
+        
         
         return {};
         
