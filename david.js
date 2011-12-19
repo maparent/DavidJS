@@ -8,9 +8,8 @@ This module should be loaded using david.Bootstrap.
 
 ====================================*/
 
-define(["david.utilities", "order!jquery", "order!underscore", "order!backbone"],
+define(["david.utilities", "jquery", "underscore", "backbone"],
     function($du, $jQ, _, $bb){
-        
         
         // The name of the attribute to search for plugin modules
         var DAVIDPLUGIN = "data-module";
@@ -29,8 +28,6 @@ define(["david.utilities", "order!jquery", "order!underscore", "order!backbone"]
                 $du.initialiseModule(toModule, toElement, tnIndex, toElement.attr(INITOVERRIDE));
             });
         });
-        
-        
         
         /**
          * Creates an object for the namespace specified, or if the namespace exists
@@ -60,7 +57,7 @@ define(["david.utilities", "order!jquery", "order!underscore", "order!backbone"]
         
         
         
-        return {};
+        return david;
         
 // Ensure david namespace is defined
 //if (_.isUndefined(david))

@@ -5,8 +5,8 @@
  * or make tasks easier.
  */
 
-define(["order!jquery", "order!underscore"],
-    function($jQ, _){
+define(
+    function(){
         /*********************
          * UPDATE THE STRING PROTOTYPE
          *********************/
@@ -69,16 +69,7 @@ define(["order!jquery", "order!underscore"],
          * End of string prototype manipulation
          ***********************/
         
-        
-        
-        
-        
-        
-        
-        /*************
-         * The david.utilities object
-         *************/
-        return {
+        david.utilities = {
             /**
              * Checks if the object passed is the type specified
              */
@@ -102,4 +93,13 @@ define(["order!jquery", "order!underscore"],
         };
         
         
+        
+        
+        
+        
+        
+        /*************
+         * The david.utilities object
+         *************/
+        return david.utilities;
     });
