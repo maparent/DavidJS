@@ -77,6 +77,14 @@ define(
             {
                 return Object.prototype.toString.call(toObject) === ("[object " + tcType + "]");
             },
+            /** 
+             * Takes a URL and "Cleans" it by adding to the url, the default is to add the version from cachebuster
+             * This can be overridden in other modules
+             */
+            cleanURL : function(tcURL)
+            {
+                return tcURL + (tcURL.indexOf("?") < 0 ? "?" : "&") + "version=" + require.config.cachebuster;
+            },
             /**
              * Initialises toModule by calling toInitFunction or "init" passing the
              * element and index as a parmeter.  toModule should already be loaded
