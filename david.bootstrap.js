@@ -392,8 +392,16 @@ var require, define;
                 if (!m_oSplash)
                 {
                     m_oSplash = document.getElementById("grpSplash") || document.createElement("div");
-                    m_oSplash.style.width = (self.innerWidth || (document.documentElement && document.documentElement.clientWidth) || document.body.clientWidth) + "px";
-                    m_oSplash.style.height = (self.innerHeight || (document.documentElement && document.documentElement.clientHeight) || document.body.clientHeight) + "px";
+                    m_oSplash.style.width = Math.max(
+                                Math.max(document.body.scrollWidth, document.documentElement.scrollWidth),
+                                Math.max(document.body.offsetWidth, document.documentElement.offsetWidth),
+                                Math.max(document.body.clientWidth, document.documentElement.clientWidth)
+                            )+ "px";
+                    m_oSplash.style.height = Math.max(
+                                Math.max(document.body.scrollHeight, document.documentElement.scrollHeight),
+                                Math.max(document.body.offsetHeight, document.documentElement.offsetHeight),
+                                Math.max(document.body.clientHeight, document.documentElement.clientHeight)
+                            )+ "px";
                     m_oSplash.style.position = "absolute";
                     m_oSplash.style.top = "0px";
                     m_oSplash.style.left = "0px";

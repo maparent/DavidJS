@@ -62,19 +62,23 @@ define(["david.utilities", "jquery", "underscore", "backbone"],
                     var m_aMSIEHistory = null;
                     
                     return {
-                        registerListener : function(tcHash, toCallback)
+                        registerListener : function(toCallback, tcHash)
                         {
+                            // If the hash is not
+                            tcHash = tcHash || "*";
                             if (!this.initiialised)
                             {
                                 this.initialised = true;
                                 this.init();
                             }
+                            
                             tcHash = tcHash.toLowerCase();
                             m_aCallbacks[tcHash] = m_aCallbacks[tcHash] || [];
                             m_aCallbacks[tcHash].push(toCallback);
                         },
                         init : function()
                         {
+                            m_cLastHash = david.browser.getHash();
                             if (david.browser.isIE())
                             {
                                 m_aMSIEHistory = david.utilities.createElement('iframe');
@@ -101,15 +105,27 @@ define(["david.utilities", "jquery", "underscore", "backbone"],
                             var lcHash = m_aMSIEHistory != null ? 
                                 m_aMSIEHistory.location.href.split('&')[0].split('=')[1] :
                                 david.browser.getHash();
+                            var i, lnLength;
                             if (m_cLastHash != lcHash)
                             {
                                 m_cLastHash = lcHash;
                                 var lcCheck = m_cLastHash.toLowerCase();
+                                
+                                // Call generic callbacks
+                                if (m_aCallbacks["*"])
+                                {
+                                    for (i=0, lnLength = m_aCallbacks["*"].length; i<lnLength; i++)
+                                    {
+                                        m_aCallbacks["*"][i].call(this, lcHash);
+                                    }
+                                }
+                                
+                                // Call specific callbacks
                                 if (m_aCallbacks[lcCheck])
                                 {
-                                    for (var i=0, lnLength = m_aCallbacks[lcCheck].length; i<lnLength; i++)
+                                    for (i=0, lnLength = m_aCallbacks[lcCheck].length; i<lnLength; i++)
                                     {
-                                        m_aCallbacks[lcCheck][i].call();
+                                        m_aCallbacks[lcCheck][i].call(this, lcHash);
                                     }
                                 }
                             }
@@ -119,7 +135,7 @@ define(["david.utilities", "jquery", "underscore", "backbone"],
                 
                 // The public interface for this controller
                 return {
-                    registerHashListener : function(tcHash, toCallback){m_oHashListener.registerListener(tcHash, toCallback);},
+                    registerHashListener : function(toCallback, tcHash){m_oHashListener.registerListener(toCallback, tcHash);},
                     getHref: function(){return location.href;},
                     getHash: function(tcURL){tcURL = tcURL || window.location.toString(); return tcURL.indexOf("#") == -1 ? "" : tcURL.split("#")[1];},
                     getHost: function(){return location.host;},
@@ -182,6 +198,25 @@ define(["david.utilities", "jquery", "underscore", "backbone"],
                     getURLParameter: function(tcParameter)
                     {
                         return this.getURLParameters()[tcParameter] || null;
+                    },
+                    /**
+                     * Gets the size of the document, if the document is smaller than the viewport, this will
+                     * get the viewport size
+                     */
+                    getDocumentSize : function()
+                    {
+                        return {
+                            width : Math.max(
+                                Math.max(document.body.scrollWidth, document.documentElement.scrollWidth),
+                                Math.max(document.body.offsetWidth, document.documentElement.offsetWidth),
+                                Math.max(document.body.clientWidth, document.documentElement.clientWidth)
+                            ),
+                            height : Math.max(
+                                Math.max(document.body.scrollHeight, document.documentElement.scrollHeight),
+                                Math.max(document.body.offsetHeight, document.documentElement.offsetHeight),
+                                Math.max(document.body.clientHeight, document.documentElement.clientHeight)
+                            )
+                        }
                     }
                 };
             })();
@@ -264,7 +299,7 @@ define(["david.utilities", "jquery", "underscore", "backbone"],
                 getURLParameter : function(tcParameterName){return m_oLocationController.getURLParameter(tcParameterName);},
                 setLocation : function(tcURL, tlUpdateHistory){tlUpdateHistory ? m_oLocationController.setLocation(tcURL) : m_oLocationController.replaceLocation(tcURL);},
                 getHash : function(tcURL){return m_oLocationController.getHash(tcURL);},
-                registerHashListener : function(tcHash, toCallback){m_oLocationController.registerHashListener(tcHash, toCallback)},
+                registerHashListener : function(toCallback, tcHash){m_oLocationController.registerHashListener(toCallback, tcHash)},
                 monitorHashChanges : function(){m_oLocationController.initHashListener()},
                 // Cookie support
                 usesCookies: function(){return m_oCookieController.usesCookies();},
