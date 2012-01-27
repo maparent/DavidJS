@@ -5,8 +5,8 @@
  * or make tasks easier.
  */
 
-define(
-    function(){
+define(["jquery"],
+    function($jQ){
         /*********************
          * UPDATE THE STRING PROTOTYPE
          *********************/
@@ -97,10 +97,36 @@ define(
                 {
                     toModule[toInitFunction].apply(toModule, [toElement, tnIndex]);
                 };
-            }
+            },
+            
+            /** Creates an element using the namespace if possible **/
+            createFunction : function(tcName)
+            {
+                this.createFunction = 
+                    document.createElementNS ? 
+                        function(tcName){return document.createElementNS( 'http://www.w3.org/1999/xhtml', tcName);} :
+                        function(tcName){return document.createElement(tcName);};
+                
+                return this.createFunction(tcName);
+            },
+            
+            /*
+             * Creates an element using the tag name
+             * Cloning of an element is faster than creating, so we keep a copy
+             * of every element that we have created in order to clone them if
+             * multiples are needed
+             */
+            createElement : function(tcTagName)
+            {
+                tcTagName = tcTagName.toLowerCase();
+                return (this.createElement[tcTagName] || (this.createElement[tcTagName] = this.createFunction(tcTagName))).cloneNode(false);
+            },
+            
+            /**
+             * Creates a callback function which will call toMethod on toTarget and return the result.
+             */
+            createCallback : function(toMethod, toTarget){return function(){toMethod.apply(toTarget, arguments);}}
         };
-        
-        
         
         
         

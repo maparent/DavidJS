@@ -36,77 +36,328 @@ define(["david.utilities", "jquery", "underscore", "backbone"],
         david.namespace = function(tcNamespace)
         {   
             var laParts = tcNamespace.split('.');
-
             window[laParts[0]] = window[laParts[0]] ? window[laParts[0]] : {};
             var loCurrent = window[laParts[0]];
 
-            for (var i = 1, lnLength=laParts.length; i<lnLength; i++)
+            for (var i=1, lnLength=laParts.length; i<lnLength; i++)
             {
-                if (!loCurrent[laParts[i]])
-                {
-                    loCurrent[laParts[i]] = {};
-                }
-                loCurrent = loCurrent[laParts[i]];
+                loCurrent = loCurrent[laParts[i]] = loCurrent[laParts[i]] || {};
             }
             return loCurrent;
-        }
+        };
         
-        
-        
-        
-        
-        
+        /** Creation of the browser helper utilities */
+        david.browser = (function(){
+            // Global application cookie identifier
+            var SESSION_COOKIE = "goliath_app_id";
+            var SESSION_PARAMETER = "sessionID";
+            
+            // The Location Controller handles all browser URL related functionallity
+            var m_oLocationController = (function(){
+                var m_oURLParameters = null;
+                
+                var m_oHashListener = (function(){
+                    var m_cLastHash = '';
+                    var m_aCallbacks = {};
+                    var m_aMSIEHistory = null;
+                    
+                    return {
+                        registerListener : function(toCallback, tcHash)
+                        {
+                            // If the hash is not
+                            tcHash = tcHash || "*";
+                            if (!this.initiialised)
+                            {
+                                this.initialised = true;
+                                this.init();
+                            }
+                            
+                            tcHash = tcHash.toLowerCase();
+                            m_aCallbacks[tcHash] = m_aCallbacks[tcHash] || [];
+                            m_aCallbacks[tcHash].push(toCallback);
+                        },
+                        init : function()
+                        {
+                            m_cLastHash = david.browser.getHash();
+                            if (david.browser.isIE())
+                            {
+                                m_aMSIEHistory = david.utilities.createElement('iframe');
+                                $jQ(m_aMSIEHistory).css('zIndex', '-1');
+                                document.body.appendChild(m_aMSIEHistory);
+                                $jQ('a[href*="#"]').each(function(tnIndex){
+                                    if (!this.hashLink)
+                                    {
+                                        this.hashLink = true;
+                                        $jQ(this).click(function(){
+                                            m_aMSIEHistory.document.execCommand('Stop');
+                                            this.msieHistory.location.href = '/?hash=' + david.browser.getHash(this.href) + '&title=' + document.title;
+                                        });
+                                    }
+                                });
+                            }
+                            
+                            // watch the location for changes
+                            var loCallback = david.utilities.createCallback(this.watchLocation, this);
+                            window.setInterval(loCallback, 200);
+                        },
+                        watchLocation : function()
+                        {
+                            var lcHash = m_aMSIEHistory != null ? 
+                                m_aMSIEHistory.location.href.split('&')[0].split('=')[1] :
+                                david.browser.getHash();
+                            var i, lnLength;
+                            if (m_cLastHash != lcHash)
+                            {
+                                m_cLastHash = lcHash;
+                                var lcCheck = m_cLastHash.toLowerCase();
+                                
+                                // Call generic callbacks
+                                if (m_aCallbacks["*"])
+                                {
+                                    for (i=0, lnLength = m_aCallbacks["*"].length; i<lnLength; i++)
+                                    {
+                                        m_aCallbacks["*"][i].call(this, lcHash);
+                                    }
+                                }
+                                
+                                // Call specific callbacks
+                                if (m_aCallbacks[lcCheck])
+                                {
+                                    for (i=0, lnLength = m_aCallbacks[lcCheck].length; i<lnLength; i++)
+                                    {
+                                        m_aCallbacks[lcCheck][i].call(this, lcHash);
+                                    }
+                                }
+                            }
+                        }
+                    };
+                })();
+                
+                // The public interface for this controller
+                return {
+                    registerHashListener : function(toCallback, tcHash){m_oHashListener.registerListener(toCallback, tcHash);},
+                    getHref: function(){return location.href;},
+                    getHash: function(tcURL){tcURL = tcURL || window.location.toString(); return tcURL.indexOf("#") == -1 ? "" : tcURL.split("#")[1];},
+                    getHost: function(){return location.host;},
+                    getHostname: function(){return location.hostname;},
+                    getPathname: function(){return location.pathname;},
+                    getPort: function(){return location.port;},
+                    getProtocol: function(){return location.protocol;},
+                    getSearch: function(){return location.search;},
+                    // Sends the browser to a new page, this will update the history
+                    setLocation: function(tcURL){location.assign(this.cleanLocation(tcURL));},
+                    // Sends the browser to a new page, but does not change history
+                    replaceLocation: function(tcURL){location.replace(this.cleanLocation(tcURL));},
+                    // Sets up a url to be used as a web service call
+                    getWebServiceURL :function(tcURL){return "/WS/" + this.cleanLocation(tcURL);},
+                    // Makes sure the url is valid and adds a session id if required
+                    cleanLocation: function(tcURL)
+                    {
+                        tcURL = tcURL || "/";
+                        // Add the session id if needed
+                        if (!m_oCookieController.usesCookies() && 
+                            (tcURL.indexOf(SESSION_PARAMETER) < 0 || !tcURL.indexOf(this.getHost()) >= 0 || (/^[^\.\/]./i.test(tcURL)) ))
+                        {
+                            var lcSessionID = david.browser.sessionController.getSessionID();
+                            if (lcSessionID != null)
+                            {
+                                tcURL += (/\?/.test(tcURL) ? "&" : "?" ) + SESSION_PARAMETER + "=" + lcSessionID;
+                            }
+                        }
+                        return tcURL;
+                    },
+                    /**
+                     * Gets an object containing all of the parameters of the url for example, a url such as the following:
+                     * http://localhost:8080/collector?projectID=myProject&testParameter=12349987
+                     * would return the following object:
+                     * {
+                     *  projectID: "myProject",
+                     *  testParameter: "12349987"
+                     * }
+                     */
+                    getURLParameters: function()
+                    {
+                        if (!m_oURLParameters)
+                        {
+                            m_oURLParameters = {};
+                            var laSearch = this.getSearch();
+                            laSearch = ((laSearch.length > 0) ? laSearch.substring(1) : laSearch).split('&');
+
+                            for (var i=0, lnLength = laSearch.length; i<lnLength; i++)
+                            {
+                                var laParam = laSearch[i].split("=");
+                                m_oURLParameters[laParam[0]] = laParam[1];
+                            }
+                        }
+                        return m_oURLParameters;
+                    },
+                    /**
+                     * Gets the value of an individual parameter on the url, if the parameter does not
+                     * exist, this will return null rather than undefined
+                     */
+                    getURLParameter: function(tcParameter)
+                    {
+                        return this.getURLParameters()[tcParameter] || null;
+                    },
+                    /**
+                     * Gets the size of the document, if the document is smaller than the viewport, this will
+                     * get the viewport size
+                     */
+                    getDocumentSize : function()
+                    {
+                        return {
+                            width : Math.max(
+                                Math.max(document.body.scrollWidth, document.documentElement.scrollWidth),
+                                Math.max(document.body.offsetWidth, document.documentElement.offsetWidth),
+                                Math.max(document.body.clientWidth, document.documentElement.clientWidth)
+                            ),
+                            height : Math.max(
+                                Math.max(document.body.scrollHeight, document.documentElement.scrollHeight),
+                                Math.max(document.body.offsetHeight, document.documentElement.offsetHeight),
+                                Math.max(document.body.clientHeight, document.documentElement.clientHeight)
+                            )
+                        }
+                    }
+                };
+            })();
+            
+            // The Cookie controller handles all of the cookie related functions
+            var m_oCookieController = (function(){
+
+                // The public interface for this controller
+                return {
+                    // Checks if we are allowed to use cookies
+                    usesCookies: function()
+                    {
+                        var lnDate = new Date().getTime();
+                        var lcCookie = "goliath.test";
+
+                        this.setCookie(lcCookie, lnDate);
+
+                        var lnCookieValue = this.getCookie(lcCookie);
+                        this.deleteCookie(lcCookie);
+
+                        // This replaces the usesCookies function with the functions below,
+                        // this will mean the comparison is only called once
+                        this.usesCookies = (lnDate == lnCookieValue) ?
+                            function(){return true;} :
+                            function(){return false;};
+
+                        return this.usesCookies();
+                    },
+                    /**
+                     * Gets the current value of a cookie, or null if the cookie doesn't
+                     * exist
+                     */
+                    getCookie: function(tcName)
+                    {
+                        var laResults = document.cookie.match ( '(^|;) ?' + tcName + '=([^;]*)(;|$)' );
+                        return (laResults) ? laResults[2] : null;
+                    },
+
+                    /**
+                     * Sets the value of a cookie
+                     */
+                    setCookie: function(tcName, tcValue, tdExpires, tcPath, tcDomain, tlSecure )
+                    {
+                        if (tdExpires)
+                        {
+                            tdExpires = tdExpires * 1000 * 60 * 60 * 24;
+                        }
+                        var ldExpires_date = new Date(new Date().getTime() + (tdExpires));
+
+                        document.cookie = tcName+'='+escape(tcValue) +
+                            ((tdExpires) ? ';expires=' + escape(ldExpires_date.toGMTString()) : '') +
+                            ';path=' + escape(tcPath || '/' ) +
+                            ';domain=' + escape(tcDomain || '') +
+                            ( (tlSecure ) ? ';secure' : '' );
+                    },
+
+                    /**
+                     * Deletes a cookie
+                     */
+                    deleteCookie: function(tcName, tcPath, tcDomain )
+                    {
+                        if (this.getCookie(tcName))
+                        {
+                            document.cookie = tcName + '=' +
+                                ';path=' + escape(tcPath || '/') +
+                                ';domain=' + escape(tcDomain || '') +
+                                ';expires=Thu, 01-Jan-1970 00:00:01 GMT';
+                        }
+                    }
+
+                };
+
+            })();
+            
+            
+            // Public browser interface
+            return {
+                // Location support and awareness
+                getURLParameters: function(){return m_oLocationController.getURLParameters();},
+                getURLParameter : function(tcParameterName){return m_oLocationController.getURLParameter(tcParameterName);},
+                setLocation : function(tcURL, tlUpdateHistory){tlUpdateHistory ? m_oLocationController.setLocation(tcURL) : m_oLocationController.replaceLocation(tcURL);},
+                getHash : function(tcURL){return m_oLocationController.getHash(tcURL);},
+                registerHashListener : function(toCallback, tcHash){m_oLocationController.registerHashListener(toCallback, tcHash)},
+                monitorHashChanges : function(){m_oLocationController.initHashListener()},
+                // Cookie support
+                usesCookies: function(){return m_oCookieController.usesCookies();},
+                getCookie : function(tcName){return m_oCookieController.getCookie(tcName);},
+                setCookie : function(tcName, tcValue, tdExpires, tcPath, tcDomain, tlSecure ){return m_oCookieController.getCookie(tcName, tcValue, tdExpires, tcPath, tcDomain, tlSecure);},
+                deleteCookie : function(tcName, tcPath, tcDomain){return m_oCookieController.deleteCookie(tcName, tcPath, tcDomain);},
+                
+                // Basic browser sniffing
+                isSafari : function(){this.isSafari = /Safari/i.test(navigator.userAgent) ? function(){return true;} : function(){return false;}
+                    return this.isSafari();},
+                isIE : function(){this.isIE = /MSIE/i.test(navigator.userAgent) ? function(){return true;} : function(){return false;}
+                    return this.isIE();},
+                
+                createActiveXObject : function(tcName){try{ return new ActiveXObject(tcName);}catch(toEX){return null;}},
+
+                // HTML 5 support functions
+                isOffline: function(){return m_oSessionController.isOffline();},
+                geolocationSupported: function(){this.geolocationSupported = !!navigator.geolocation ? function(){return true;} : function(){return false;};
+                    return this.geolocationSupported()},
+                offlineSupported : function(){this.offlineSupported = !!window.applicationCache ? function(){return true;} : function(){return false;};
+                    return this.offlineSupported()},
+                webWorkersSupported : function(){this.webWorkersSupported = !!window.Worker ? function(){return true;} : function(){return false;};
+                    return this.webWorkersSupported()},
+                localStorageSupported: function(){
+                    try{this.localStorageSupported = 'localStorage' in window && window['localStorage'] != null ?
+                            function(){return true;} :
+                            function(){return false;};}catch (e){this.localStorageSupported = function(){return false;};}
+                    return this.localStorageSupported();
+                },
+                javaSupported : function() {this.javaSupported = navigator.javaEnabled ?
+                        function(){return true;} : function(){return false;}; return this.javaSupported();},
+                flashSupported : function() {
+                    var llSupported = ((navigator.plugins && navigator.plugins.length > 0)
+                            && (navigator.mimeTypes && 
+                                        navigator.mimeTypes["application/x-shockwave-flash"] && 
+                                        navigator.mimeTypes["application/x-shockwave-flash"].enabledPlugin)) ||
+                                ((navigator.appVersion.indexOf("Mac")==-1 && window.execScript) &&
+                                    this.createActiveXObject("ShockwaveFlash.ShockwaveFlash") !=null);
+                    this.flashSupported = llSupported ?
+                        function(){return true;} : function(){return false;}; return this.flashSupported();},
+                videoSupported: function(){this.videoSupported = 
+                        !!document.createElement('video').canPlayType ?
+                        function(){return true;} : function(){return false;}; return this.videoSupported();},
+                canvasSupported: function(){this.canvasSupported = 
+                        !!document.createElement('canvas').getContext ?
+                        function(){return true;} : function(){return false;}; return this.canvasSupported();},
+                canvasTextSupported: function(){this.canvasTextSupported = 
+                        !this.canvasSupported() ? function(){return false;} :
+                        typeof(document.createElement('canvas').getContext('2d').fillText) == 'function' ?
+                        function(){return true;} : function(){return false;}; return this.canvasTextSupported();}
+                
+            };
+            
+        })();
         
         return david;
         
 // Ensure david namespace is defined
-//if (_.isUndefined(david))
-//{
-//    alert("The david framework is not defined. Incorrect javascript dependancy loading.");
-//}
-
-//
-//
-///**
-// * Creates an object for the namespace specified, or if the namespace exists
-// * returns that namespace
-// */
-//david.namespace = function(tcNamespace)
-//{   
-//    var laParts = tcNamespace.split('.');
-//    
-//    window[laParts[0]] = window[laParts[0]] ? window[laParts[0]] : {};
-//    var loCurrent = window[laParts[0]];
-//
-//    for (var i = 1, lnLength=laParts.length; i<lnLength; i++)
-//    {
-//        if (!loCurrent[laParts[i]])
-//        {
-//            loCurrent[laParts[i]] = {};
-//        }
-//        loCurrent = loCurrent[laParts[i]];
-//    }
-//    return loCurrent;
-//}
-////david.namespace = function(tcNamespace)
-////{   
-////    var laParts = tcNamespace.split('.');
-////    var laFirst = _.first(laParts);
-////   
-////    // create a global namespace with first item if not already created
-////    window[laFirst] = window[laFirst] ? window[laFirst] : {};
-////    var loCurrent = window[laFirst];
-////    
-////    _.each(_.rest(laParts), function(laPart){
-////        
-////        if(_.isUndefined(laPart)){
-////            loCurrent[laPart] = {};
-////        }
-////        loCurrent = loCurrent[laPart];
-////    });
-////    return window[laFirst];
-////}
-//
 ///**
 // * Sets the status message on the page
 // */
@@ -152,155 +403,6 @@ define(["david.utilities", "jquery", "underscore", "backbone"],
 ///** Creation of the browser helper utilities */
 //david.browser = (function($){
 //    
-//    // Global application cookie identifier
-//    var SESSION_COOKIE = "goliath_app_id";
-//    var SESSION_PARAMETER = "sessionID";
-//    
-//    // The Location Controller handles all browser URL related functionallity
-//    var m_oLocationController = (function(){
-//        
-//        // Private methods and variables
-//        var m_oURLParameters = null;
-//
-//
-//        // The public interface for this controller
-//        return {
-//            getHref: function(){return location.href;},
-//            getHash: function(){return location.hash;},
-//            getHost: function(){return location.host;},
-//            getHostname: function(){return location.hostname;},
-//            getPathname: function(){return location.pathname;},
-//            getPort: function(){return location.port;},
-//            getProtocol: function(){return location.protocol;},
-//            getSearch: function(){return location.search;},
-//            // Sends the browser to a new page, this will update the history
-//            setLocation: function(tcURL){location.assign(this.cleanLocation(tcURL));},
-//            // Sends the browser to a new page, but does not change history
-//            replaceLocation: function(tcURL){location.replace(this.cleanLocation(tcURL));},
-//            // Sets up a url to be used as a web service call
-//            getWebServiceURL :function(tcURL){return "/WS/" + this.cleanLocation(tcURL);},
-//            // Makes sure the url is valid and adds a session id if required
-//            cleanLocation: function(tcURL)
-//            {
-//                tcURL = tcURL || "/";
-//                // Add the session id if needed
-//                if (!m_oCookieController.usesCookies() && 
-//                    (tcURL.indexOf(SESSION_PARAMETER) < 0 || !tcURL.indexOf(this.getHost()) >= 0 || tcURL.indexOf('.') == 0 || tcURL.indexOf('/') == 0))
-//                {
-//                    var lcSessionID = david.browser.sessionController.getSessionID();
-//                    if (lcSessionID != null)
-//                    {
-//                        tcURL += ((tcURL.indexOf('?') >= 0) ? "&" : "?" ) + SESSION_PARAMETER + "=" + lcSessionID;
-//                    }
-//                }
-//                return tcURL;
-//            },
-//            /**
-//             * Gets an object containing all of the parameters of the url for example, a url such as the following:
-//             * http://localhost:8080/collector?projectID=myProject&testParameter=12349987
-//             * would return the following object:
-//             * {
-//             *  projectID: "myProject",
-//             *  testParameter: "12349987"
-//             * }
-//             */
-//            getURLParameters: function()
-//            {
-//                if (!m_oURLParameters)
-//                {
-//                    m_oURLParameters = {};
-//                    var laSearch = this.getSearch();
-//                    laSearch = ((laSearch.length > 0) ? laSearch.substring(1) : laSearch).split('&');
-//
-//                    for (var i=0, lnLength = laSearch.length; i<lnLength; i++)
-//                    {
-//                        var laParam = laSearch[i].split("=");
-//                        m_oURLParameters[laParam[0]] = laParam[1];
-//                    }
-//                }
-//                return m_oURLParameters;
-//            },
-//            /**
-//             * Gets the value of an individual parameter on the url, if the parameter does not
-//             * exist, this will return null rather than undefined
-//             */
-//            getURLParameter: function(tcParameter)
-//            {
-//                return this.getURLParameters()[tcParameter] || null;
-//            }
-//        };
-//
-//    })();
-//        
-//    // The Cookie controller handles all of the cookie related functions
-//    var m_oCookieController = (function(){
-//        
-//        // The public interface for this controller
-//        return {
-//            // Checks if we are allowed to use cookies
-//            usesCookies: function()
-//            {
-//                var lnDate = new Date().getTime();
-//                var lcCookie = "goliath.test";
-//
-//                this.setCookie(lcCookie, lnDate);
-//
-//                var lnCookieValue = this.getCookie(lcCookie);
-//                this.deleteCookie(lcCookie);
-//
-//                // This replaces the usesCookies function with the functions below,
-//                // this will mean the comparison is only called once
-//                this.usesCookies = (lnDate == lnCookieValue) ?
-//                    function(){return true;} :
-//                    function(){return false;};
-//
-//                return this.usesCookies();
-//            },
-//            /**
-//             * Gets the current value of a cookie, or null if the cookie doesn't
-//             * exist
-//             */
-//            getCookie: function(tcName)
-//            {
-//                var laResults = document.cookie.match ( '(^|;) ?' + tcName + '=([^;]*)(;|$)' );
-//                return (laResults) ? laResults[2] : null;
-//            },
-//
-//            /**
-//             * Sets the value of a cookie
-//             */
-//            setCookie: function(tcName, tcValue, tdExpires, tcPath, tcDomain, tlSecure )
-//            {
-//                if (tdExpires)
-//                {
-//                    tdExpires = tdExpires * 1000 * 60 * 60 * 24;
-//                }
-//                var ldExpires_date = new Date(new Date().getTime() + (tdExpires));
-//
-//                document.cookie = tcName+'='+escape(tcValue) +
-//                    ((tdExpires) ? ';expires=' + escape(ldExpires_date.toGMTString()) : '') +
-//                    ';path=' + escape(tcPath || '/' ) +
-//                    ';domain=' + escape(tcDomain || '') +
-//                    ( (tlSecure ) ? ';secure' : '' );
-//            },
-//
-//            /**
-//             * Deletes a cookie
-//             */
-//            deleteCookie: function(tcName, tcPath, tcDomain )
-//            {
-//                if (this.getCookie(tcName))
-//                {
-//                    document.cookie = tcName + '=' +
-//                        ';path=' + escape(tcPath || '/') +
-//                        ';domain=' + escape(tcDomain || '') +
-//                        ';expires=Thu, 01-Jan-1970 00:00:01 GMT';
-//                }
-//            }
-//
-//        };
-//
-//    })();
 //        
 //        // The session controller handles all of the user and session related functions
 //    var m_oSessionController = (function(){
@@ -426,50 +528,8 @@ define(["david.utilities", "jquery", "underscore", "backbone"],
 //        
 //    // Returns the public interfact to the browser utilities
 //       return {
-//        cookieController : m_oCookieController,
-//        locationController : m_oLocationController,
 //        sessionController : m_oSessionController,
-//        createActiveXObject : function(tcName){try{ return new ActiveXObject(tcName);}catch(toEX){return null;}},
 //        
-//        // HTML 5 support functions
-//        isOffline: function(){return m_oSessionController.isOffline();},
-//        geolocationSupported: function(){this.geolocationSupported = !!navigator.geolocation ? function(){return true;} : function(){return false;};
-//            return this.geolocationSupported()},
-//        offlineSupported : function(){this.offlineSupported = !!window.applicationCache ? function(){return true;} : function(){return false;};
-//            return this.offlineSupported()},
-//        webWorkersSupported : function(){this.webWorkersSupported = !!window.Worker ? function(){return true;} : function(){return false;};
-//            return this.webWorkersSupported()},
-//        localStorageSupported: function(){
-//            try{this.localStorageSupported = 'localStorage' in window && window['localStorage'] != null ?
-//                    function(){return true;} :
-//                    function(){return false;};}catch (e){this.localStorageSupported = function(){return false;};}
-//            return this.localStorageSupported();
-//        },
-//        javaSupported : function() {this.javaSupported = navigator.javaEnabled ?
-//                function(){return true;} : function(){return false;}; return this.javaSupported();},
-//        flashSupported : function() {
-//            var llSupported = ((navigator.plugins && navigator.plugins.length > 0)
-//                    && (navigator.mimeTypes && 
-//                                navigator.mimeTypes["application/x-shockwave-flash"] && 
-//                                navigator.mimeTypes["application/x-shockwave-flash"].enabledPlugin)) ||
-//                        ((navigator.appVersion.indexOf("Mac")==-1 && window.execScript) &&
-//                            this.createActiveXObject("ShockwaveFlash.ShockwaveFlash") !=null);
-//            this.flashSupported = llSupported ?
-//                function(){return true;} : function(){return false;}; return this.flashSupported();},
-//        videoSupported: function(){this.videoSupported = 
-//                !!document.createElement('video').canPlayType ?
-//                function(){return true;} : function(){return false;}; return this.videoSupported();},
-//        canvasSupported: function(){this.canvasSupported = 
-//                !!document.createElement('canvas').getContext ?
-//                function(){return true;} : function(){return false;}; return this.canvasSupported();},
-//        canvasTextSupported: function(){this.canvasTextSupported = 
-//                !this.canvasSupported() ? function(){return false;} :
-//                typeof(document.createElement('canvas').getContext('2d').fillText) == 'function' ?
-//                function(){return true;} : function(){return false;}; return this.canvasTextSupported();},
-//        
-//        // Location related helper functions
-//        getURLParameter : function(tcParameterName){return this.locationController.getURLParameter(tcParameterName);},
-//        setLocation : function(tcURL, tlUpdateHistory){tlUpdateHistory ? this.locationController.setLocation(tcURL) : this.locationController.replaceLocation(tcURL);},
 //        
 //        // Session related helper functions
 //        keepAlive : function(tlKeepAlive){this.sessionController.setKeepAlive(tlKeepAlive);},
