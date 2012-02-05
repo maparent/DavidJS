@@ -79,17 +79,17 @@ var require, define;
 (function() {
     var __CACHEBUSTER__ = 1.0 // Modify this to change the version number
     var __DEBUG__ = false;  // Set to false to turn off console messages
-    
+
     // TODO: Make LOCKEXCEPTIONS configurable using require.config
     var __LOCKEXCEPTIONS__ = ["jquery", "backbone", "underscore"]; // The modules that can be defined even if locked
-    
+
     var g_oBase = this; // Reference to the container (window or server usually)
-    
-    /** 
+
+    /**
      * We include index of here so that the bootstrap can be used standalone
      * Return the integer value of the index of the object in the array
      * Returns -1 if the object is not found
-     */ 
+     */
     Array.prototype.indexOf = Array.prototype.indexOf || function(toObject /*, from */)
     {
         var lnFrom = Number(arguments[1]) || 0;
@@ -104,7 +104,7 @@ var require, define;
         }
         return -1;
     };
-    
+
     /**
      * Pads the string on the left using the character provided, ensures the string is
      * no longer than tnFinal length after padding.
@@ -122,25 +122,25 @@ var require, define;
 
     // Ensure david is defined
     g_oBase.david = typeof(g_oBase.david) == 'undefined' ? function(){} : window.david;
-    
+
     // Create david.utilities for some required utilities, these will be overwritten by the real david.utilities when it is loaded
-    g_oBase.david.utilities = typeof(g_oBase.utilities) == 'undefined' ? 
+    g_oBase.david.utilities = typeof(g_oBase.utilities) == 'undefined' ?
             {
                 // Checks if the object is of the type specified.
-                isType : function(toObject, tcType) 
+                isType : function(toObject, tcType)
                     {return Object.prototype.toString.call(toObject) === ("[object " + tcType + "]");},
-                    
-                /** 
+
+                /**
                  * Takes a URL and "Cleans" it by adding to the url, the default is to add the version from cachebuster
                  * This can be overridden in other modules
                  */
                 cleanURL : function(tcURL)
                     {return tcURL + (tcURL.indexOf("?") < 0 ? "?" : "&") + "version=" + require.config.cachebuster;}
-            } : 
+            } :
             david.utilities;
-        
-    
-    
+
+
+
     // Create the Bootstrap Object (Singleton)
     david.Bootstrap = (function(){
 
@@ -165,10 +165,10 @@ var require, define;
 
         // Stores the list of paths for module lookups
         var m_oPaths = {};
-        
+
         // Stores if the bootstrap is ready for use
         var m_lLocked = true;
-        
+
         //-------------------------------
         // Private member functions
         //-------------------------------
@@ -203,23 +203,30 @@ var require, define;
              */
             loadModule : function(taModules, toCallback)
             {
-                console.debug("Loading [" + taModules + "]");
+                console.debug("Loading " + taModules);
                 var llModule = david.utilities.isType(taModules, "Array");
-                
+
                 // Ensure that the module is always in an array
                 taModules = llModule ? taModules : [taModules];
-                var lcModuleName = llModule ? "[" + taModules.toString() + "]" : taModules[0];
-                
+                var lcModuleName = llModule ?
+                        ( this.getModule(taModules.toString()) == null ?
+                            "[" + taModules.toString() + "]" :
+                            taModules.toString()) :
+                        taModules[0];
+
                 // Get the module, if it does not already exist, add it here
                 var loModule = this.getModule(lcModuleName);
+                console.debug(loModule == null ? "Preparing to load "+ lcModuleName :  lcModuleName + " already loaded");
                 loModule = loModule == null ? david.Bootstrap.addModule({
                                 name : llModule ? lcModuleName : taModules[0],
-                                dependencies : llModule ? taModules : [], 
+                                dependencies : llModule ? taModules : [],
                                 anonymous: llModule}) :
                                 loModule;
-                            
+
                 // Add the callback to the module, if the module is completed loading, this will be executed here
-                loModule.addLoadedCallback(toCallback);
+                (taModules.length == 1 ?
+                    this.getModule(taModules.toString()) :
+                    this.getModule(lcModuleName)).addLoadedCallback(toCallback);
                 loModule.plugin.load(loModule);
                 return loModule;
             },
@@ -252,19 +259,16 @@ var require, define;
                 }
                 else
                 {
-                    console.debug("ADJUSTING Module [" + toModule.name + "]");
+                    console.debug("Adjusting Module [" + toModule.name + "]");
                     loModule.setDefinition(loModule.resolveDefinition(toModule.definition));
                     // Ensure all of the dependencies are pushed on to the module
                     for (var i=0, lnLength=toModule.dependencies.length; i<lnLength; i++)
                     {
                         loModule.addDependency(toModule.dependencies[i]);
                     }
-                    
+
                     // If this module is loaded then we need to force the dependencies
-                    if (loModule.isCompleted())
-                    {
-                        loModule.loadDependencies();
-                    }
+                    loModule.complete();
                 }
                 return loModule;
             },
@@ -276,7 +280,7 @@ var require, define;
             {
                 return m_oModules[david.utilities.isType(toModule, 'String') ? david.Bootstrap.extractModuleInfo(toModule).name : toModule.getName()] || null;
             },
-            
+
             /**
              * helper function to extract the name and path from the url
              */
@@ -284,12 +288,24 @@ var require, define;
             {
                 var llAnonymous = !david.utilities.isType(tcModuleURL, "String");
                 tcModuleURL = (llAnonymous ? tcModuleURL.toString() : tcModuleURL).toLowerCase();
-                var loInfo = {
-                    name : ((llAnonymous ? tcModuleURL : tcModuleURL.replace(/^.+!|.js$/g, "")).replace(david.Bootstrap.getDefaultRoot(), "")).toLowerCase(),
-                    path : llAnonymous ? "" : tcModuleURL.replace(/^.+!|[^/]+(.js)?$|^http[s]?:\/\/[^/]+/g, ""),
-                    plugin : llAnonymous ? "" : tcModuleURL.replace(/!?[^!]+$/g, "")
-                    };
-                loInfo.path = (/^[./]/.test(loInfo.path)) ? loInfo.path : david.Bootstrap.getDefaultRoot() + loInfo.path;
+                var loInfo = null;
+                if (/^\[.+/.test(tcModuleURL))
+                {
+                    loInfo = {
+                        name : tcModuleURL,
+                        path : "",
+                        plugin : ""
+                        };
+                }
+                else
+                {
+                    loInfo = {
+                        name : ((llAnonymous ? tcModuleURL : tcModuleURL.replace(/^.+!|.js$/g, "")).replace(david.Bootstrap.getDefaultRoot(), "")).toLowerCase(),
+                        path : llAnonymous ? "" : tcModuleURL.replace(/^.+!|[^/]+(.js)?$|^http[s]?:\/\/[^/]+/g, ""),
+                        plugin : llAnonymous ? "" : tcModuleURL.replace(/!?[^!]+$/g, "")
+                        };
+                    loInfo.path = (/^[./]/.test(loInfo.path)) ? loInfo.path : david.Bootstrap.getDefaultRoot() + loInfo.path;
+                }
                 return loInfo;
             },
             /**
@@ -301,10 +317,10 @@ var require, define;
             {
                 m_oPaths[tcModuleName] = tcPath;
             },
-            
+
             /**
              * Gets the full path for the module specified
-             */ 
+             */
             getPath : function(tcModuleName, tcModulePath)
             {
                 return m_oPaths[tcModuleName] || tcModulePath + tcModuleName.replace(/^.+\//g, "");
@@ -375,7 +391,7 @@ var require, define;
                     this.hideSplash();
                 }
             },
-            
+
             /**
              * Gets the root of the modules if one is not provided
              */
@@ -383,7 +399,7 @@ var require, define;
             {
                 return require.config.baseUrl;
             },
-            
+
             /**
              * Creates the splash screen if needed, then displays it
              */
@@ -407,10 +423,10 @@ var require, define;
                     m_oSplash.style.left = "0px";
                     m_oSplash.style.background = "white url('/resources/images/ajax-loader.gif') no-repeat center";
                     m_oSplash.id="grpSplash";
-                    this.appendSplashWhenReady();                   
+                    this.appendSplashWhenReady();
                 }
             },
-            
+
             /**
              * this defers display of the splash screen until it is safe
              */
@@ -420,7 +436,7 @@ var require, define;
                 {
                     try
                     {
-                        // IE6 may throw an error if it is not in a state where it can append 
+                        // IE6 may throw an error if it is not in a state where it can append
                         document.body.appendChild(m_oSplash);
                     }
                     catch (loEX)
@@ -446,7 +462,7 @@ var require, define;
                             m_oSplash = null;
                         }
                     };
-                   
+
                 if ($jQ != null)
                 {
                     $jQ("#grpSplash").fadeOut("fast",loFunction);
@@ -458,7 +474,7 @@ var require, define;
             }
         };
     })();
-    
+
     /**
      * The module class, encapsulates the concept of a module
      */
@@ -478,65 +494,65 @@ var require, define;
 
             // Name of the module
             var m_cName = "";
-            
+
             // The path for the module
             var m_cPath = "";
 
             // List of dependency keys
             var m_aDependencies = [];
-            
+
             // Reference to the script tag for this module
             var m_oTag = null;
 
             // contains the results of the executed module
             var m_oDefinition = null;
-            
+
             // stores the flag indicating a module has completed
             var m_lIsCompleted = false;
 
             // stores the list of callbacks to run when this module is loaded
             var m_aLoadedCallbacks = [];
-            
+
             // Stores if this was an anonymous module
             var m_lAnonymous = false;
-            
+
             // Store the parent modules, or the modules requiring this module
             var m_aParents = [];
-            
+
             // Store if the extension of .js should be added to the file
             var m_lForceJS = true;
-        
-            
+
+
             //-------------------------------
             // Privileged functions
             //-------------------------------
-            
+
             // GETS/SETS the name of the module
             this.getName = function(){return m_cName;};
             this.setName = function(tcName){m_cName = tcName.toLowerCase();};
-            
-            /** 
+
+            /**
              * Check if this module has completed its load, completed means both
              * loaded and all callbacks have been called
              */
             this.isCompleted = function(){return m_lIsCompleted && (this.isLoading() || this.isAnonymous())};// && m_aLoadedCallbacks.length == 0};
-            this.setCompleted = function(){console.debug("Completing module " + this.getName()); m_lIsCompleted = true;};
-            
+            this.setCompleted = function(){console.debug("Completing module " + this.getName());m_lIsCompleted = true;};
+
             /**
              * Get the list of modules that require this module
              */
             this.getParents = function(){return m_aParents};
-            
+
             /**
              * Checks if this module is an anonymous module or not
              */
             this.isAnonymous = function(){return m_lAnonymous;};
             this.setAnonymous = function(tlAnonymous){m_lAnonymous = tlAnonymous;};
-            
+
             // GETS/SETS the path of this module
             this.getPath = function(){return m_cPath};
             this.setPath = function(tcPath){m_cPath = tcPath;};
-            
+
             /**
              * Gets or sets if the .js extension should be added to a file if it does not
              * already exist.
@@ -549,29 +565,29 @@ var require, define;
                 }
                 return m_lForceJS;
             };
-            
+
             // GETS the URL for this module
             this.getURL = function(){
                 return david.utilities.cleanURL(david.Bootstrap.getPath(this.getName(), this.getPath()).replace(/\.js$/, "") + (this.forceJS() ? ".js" : ""));};
-            
+
             // GET/SET the script tag that is associated with this module
             this.setTag = function(toTag){m_oTag = toTag;};
             this.getTag = function(){return m_oTag;};
-            
+
             // Gets/Sets the definition of this module
             this.getDefinition = function(){return m_oDefinition};
             this.setDefinition = function(toDefinition)
             {
-                console.debug("Setting definition of [" + this.getName() + "] to " + toDefinition); 
+                console.debug("Setting definition of " + this.getName() + " to " + toDefinition);
                 m_oDefinition = toDefinition
             };
-            
+
             /**
              * Checks if this module has been marked as loaded, loaded means
              * any scripts have been attached, or a definition has been added
              */
             this.isLoading = function(){return this.getTag() != null || m_oDefinition != null};
-            
+
             /***
              * Adds the specified module as a dependent of this module
              * tcName - the name of the javascript file to add as a module.
@@ -584,9 +600,9 @@ var require, define;
                 var lnIndex = this.getDependency(loInfo.name);
                 if (lnIndex < 0)
                 {
-                    console.debug("Adding dependency [" + loInfo.name + "] to [" + this.getName() +"]");
+                    console.debug("Adding dependency " + loInfo.name + " to " + this.getName());
                     m_aDependencies.push(loInfo.name);
-                    
+
                     var loModule = david.Bootstrap.getModule(tcName) || david.Bootstrap.addModule({
                         name : tcName,
                         dependencies : []
@@ -601,22 +617,24 @@ var require, define;
                         console.debug("Using plugin `" + lcPlugin + "` to load [" + loModule.getName() + "]");
                         // There is a plugin being loaded for this module, so don't allow a regular load
                         loModule.plugin.load = function(){};
-                        
-                        require([lcPlugin], 
+
+                        // Load the plugin if needed
+                        require([lcPlugin],
                             function(toPlugin){
-                                loModule.plugin = toPlugin;
-                                loModule.plugin.load(loModule);
-                            });
+                                    console.debug("Completed loading plugin " + lcPlugin);
+                                    loModule.plugin = toPlugin;
+                                    loModule.plugin.load(loModule);
+                                });
                     }
                 }
             };
-            
+
             // GETS the list of dependencies if there are any
             this.getDependencies = function(){return m_aDependencies;};
-            
+
             // Gets the index of the specified dependency
             this.getDependency = function(tcModule){return m_aDependencies.indexOf(tcModule);};
-            
+
             /**
              * Adds a callback to this module.  When this module and all of its
              * dependencies are loaded, this callback will be executed
@@ -624,34 +642,37 @@ var require, define;
             this.addLoadedCallback = function(toCallback)
             {
                 if (!toCallback) {return;}
-                
+
+                console.debug("Adding callback to " + this.getName());
                 if (m_aLoadedCallbacks.indexOf(toCallback) < 0)
                 {
                     m_aLoadedCallbacks[m_aLoadedCallbacks.length] = toCallback;
                 }
-                
+
                 // If the module is already completed then just execute the callbacks
                 if (this.isCompleted())
                 {
+                    console.debug("Module is completed, executing callbacks");
                     this.executeLoadedCallbacks();
                 }
             }
-            
+
             /**
              * Checks if there are oustanding callbacks
              */
             this.hasCallbackFunctions = function(){return m_aLoadedCallbacks && m_aLoadedCallbacks.length > 0;};
-            
+
             /**
              * This executes the callbacks when this module is completely loaded
              */
             this.executeLoadedCallbacks = function()
             {
+                console.debug("Executing callbacks for " + this.getName());
                 for (var i=0, lnLength = m_aLoadedCallbacks.length; i<lnLength; i++)
                 {
                     var laArgs = this.getCallbackArguments();
-                    laArgs = this.isAnonymous() && !this.getDefinition() ? laArgs.splice(1) : laArgs;
-                    console.debug("Executing module [" + this.getName() + "] callback " + (i + 1) + "/" + lnLength + "\n\targs: [" + laArgs + "]");
+                    laArgs = this.isAnonymous() && !this.getDefinition() ? laArgs.splice(1, laArgs.length) : laArgs;
+                    console.debug("Executing" + (this.isAnonymous() ? " Anonymous " : "") + " module " + this.getName() + " callback " + (i + 1) + "/" + lnLength + "\n\targs: [" + laArgs + "]");
                     try
                     {
                         var loResult = m_aLoadedCallbacks[i].apply(this, laArgs);
@@ -668,10 +689,10 @@ var require, define;
                 }
                 m_aLoadedCallbacks.length = 0;
             }
-            
+
             // Gets an array of dependency objects which can be passed to a callback
             this.getCallbackArguments = function()
-            {   
+            {
                 var laDependencies = this.getDependencies();
                 var loArgs = [this.getDefinition()];
                 for (var i=0, lnLength = laDependencies.length; i<lnLength; i++)
@@ -703,10 +724,10 @@ var require, define;
                 }
                 return loArgs;
             }
-            
+
             // Set up the default plugin
             this.plugin = {load : function(toModule){toModule.load();}, onLoaded : function(toModule){}};
-            
+
             //-------------------------------
             // Initialisation function
             //-------------------------------
@@ -715,9 +736,9 @@ var require, define;
             this.setPath(loInfo.path);
             this.setDefinition(toModule.definition ? toModule.definition : null);
             this.setAnonymous(toModule.anonymous ? true : m_lAnonymous);
-            
+
             david.Bootstrap.incrementModuleCount();
-            
+
             for (var i=0, lnLength = (toModule.dependencies || []).length; i<lnLength; i++)
             {
                 this.addDependency(toModule.dependencies[i]);
@@ -749,24 +770,25 @@ var require, define;
          */
         loadDependencies : function()
         {
-            console.debug("Loading dependencies for [" + this.getName() + "]");
+            console.debug("Loading dependencies for " + this.getName());
             var laDependencies = this.getDependencies();
             var llLoadingLocked = false;
-            
+
             // Attempt to load each dependency that is not synch locked
             for (var i=0, lnLength = laDependencies.length; i<lnLength; i++)
             {
                 var lcDependency = laDependencies[i];
                 // Get the module
-                var loModule = david.Bootstrap.getModule(lcDependency);                
+                var loModule = david.Bootstrap.getModule(lcDependency);
                 if (!loModule.isLoading())
                 {
+                    console.debug("Loading module " + loModule.getName());
                     loModule.plugin.load(loModule);
                 }
             }
             return llLoadingLocked;
         },
-        
+
         /***
          * Adds the script tag to the page
          * tcURL - The url for the tag source
@@ -776,7 +798,7 @@ var require, define;
             if (!this.isAnonymous() && !this.getTag())
             {
                 var lcURL = this.getURL();
-                console.debug("ADDING SCRIPT for [" + this.getName() + "] ("+ lcURL + ")");
+                console.debug("Adding script for " + this.getName() + " ("+ lcURL + ")");
                 // Check if a script already exists on the page with this module
                 var laScripts = document.getElementsByTagName("script");
                 for (var i=0, lnLength = laScripts.length; i<lnLength; i++)
@@ -789,7 +811,7 @@ var require, define;
                         return;
                     }
                 }
-                
+
                 // Make sure we are ready
                 var loTag = document.createElement("script");
                 loTag.src = lcURL;
@@ -798,11 +820,11 @@ var require, define;
                 loTag.async = true;
                 loTag.module = this;
                 this.setTag(loTag);
-                this.addEventListener(loTag, this.onScriptLoaded, typeof(loTag.readyState) != 'undefined' ? "readystatechange" : "load"); 
+                this.addEventListener(loTag, this.onScriptLoaded, typeof(loTag.readyState) != 'undefined' ? "readystatechange" : "load");
                 document.getElementsByTagName("head")[0].appendChild(loTag);
             }
         },
-        
+
         /**
          * Adds an event listener to the element specified
          */
@@ -821,53 +843,58 @@ var require, define;
                     });
             }
         },
-        
+
         /**
          * Event handler for loading of the script tag
          */
         onScriptLoaded : function(toEvent)
         {
             var loTag = toEvent.currentTarget || toEvent.srcElement;
-            if (toEvent.type === "load" || loTag && /^(complete|loaded)$/.test(loTag.readyState));
+            if (toEvent.type === "load" || (loTag && /^(complete|loaded)$/.test(loTag.readyState)));
             {
-                console.debug("SCRIPT loaded for module [" + loTag.module.getName() + "]");
-                loTag.setAttribute("readyState", 4);
                 var loModule = loTag.module;
                 var loOutstanding = david.Bootstrap.outstanding;
                 david.Bootstrap.outstanding = undefined;
-                
-                if (loOutstanding)
+
+                console.debug("Script loaded for module " + loModule.getName());
+                if (toEvent.type === "load" || loTag.readyState === "loaded" || loTag.readyState === "complete")
                 {
-                    if (loOutstanding.dependencies)
+                    console.debug("Anonymous script found - " + loTag.src);
+                    // Follows AMD
+                    if (loOutstanding)
                     {
-                        for (var i=0, lnLength = loOutstanding.dependencies.length; i<lnLength; i++)
+                        console.debug("Linking Anonymous script");
+                        if (loOutstanding.dependencies)
                         {
-                            loModule.addDependency(loOutstanding.dependencies[i]);
+                            for (var i=0, lnLength = loOutstanding.dependencies.length; i<lnLength; i++)
+                            {
+                                loModule.addDependency(loOutstanding.dependencies[i]);
+                            }
+                        }
+                        loModule.setAnonymous(true);
+                        if (!loModule.hasCallbackFunctions())
+                        {
+                            loModule.addLoadedCallback(loOutstanding.definition);
+                        }
+                        else
+                        {
+                            loModule.setDefinition(loModule.resolveDefinition(loOutstanding.definition));
                         }
                     }
-                    loModule.setAnonymous(true);
-                    if (!loModule.hasCallbackFunctions())
+
+                    // Detach events
+                    if (loTag.detachEvent)
                     {
-                        loModule.addLoadedCallback(loOutstanding.definition);
+                        loTag.detachEvent("onreadystatechange", loModule.onScriptLoaded);
                     }
                     else
                     {
-                        loModule.setDefinition(loModule.resolveDefinition(loOutstanding.definition));
+                        loTag.removeEventListener("load", loModule.onScriptLoaded, false);
                     }
-                    loModule.loadDependencies();
+                    loTag.module = null;
+
+                    loModule.complete();
                 }
-                loTag.module = null;
-                
-                // Detach events
-                if (loTag.detachEvent)
-                {
-                    loTag.detachEvent("onreadystatechange", loModule.onScriptLoaded);
-                }
-                else
-                {
-                    loTag.removeEventListener("load", loModule.onScriptLoaded, false);
-                }
-                loModule.complete();
             }
         },
         /**
@@ -877,59 +904,68 @@ var require, define;
         {
             // This can only be set as complete if all the dependencies are loaded
             var laDependencies = this.getDependencies();
+
+            console.debug("Checking dependencies for " + this.getName());
             for (var i=0, lnLength = laDependencies.length; i<lnLength; i++)
             {
                 var loModule = david.Bootstrap.getModule(laDependencies[i]);
                 if (!loModule.isLoading())
                 {
-                    this.loadDependencies();
+                    console.debug(loModule.getName() + " has not started loading yet");
+                    this.loadDependencies()
                     return;
                 }
                 else if (!loModule.isCompleted())
                 {
+                    console.debug(loModule.getName() + " is not yet completed");
                     return;
                 }
             }
-            
-            this.setCompleted();
-            if (this.isCompleted())
-            {
-                this.executeLoadedCallbacks();
-                david.Bootstrap.incrementLoadedModules();
 
-                // Load any dependent parents
-                var laParents = this.getParents();
-                for (i=0, lnLength = laParents.length; i<lnLength; i++)
+            console.debug("Dependency check complete for " + this.getName());
+            if (!this.isCompleted())
+            {
+                this.setCompleted();
+                if (this.isCompleted())
                 {
-                    if (!laParents[i].isCompleted())
+                    this.executeLoadedCallbacks();
+                    david.Bootstrap.incrementLoadedModules();
+
+                    // Load any dependent parents
+                    var laParents = this.getParents();
+                    for (i=0, lnLength = laParents.length; i<lnLength; i++)
                     {
-                        laParents[i].complete();
+                        if (!laParents[i].isCompleted())
+                        {
+                            laParents[i].complete();
+                        }
                     }
+                    this.plugin.onLoaded(this);
+                    david.Bootstrap.onCompletedModule(this);
                 }
-                this.plugin.onLoaded(this);
-                david.Bootstrap.onCompletedModule(this);
             }
         },
-        
+
         /**
-         * Loads the module, loading takes place by adding a script tag to the head of the html 
+         * Loads the module, loading takes place by adding a script tag to the head of the html
          * if one does not already exist
          */
         load : function()
         {
             if ((this.isAnonymous() || !this.isLoading()) && !this.isCompleted())
-            { 
-                console.debug("Starting load of module [" + this.getName() + "]");
+            {
                 if (!this.loadDependencies())
                 {
                     // The dependencies have loaded and there are no locks in place
                     if (this.isAnonymous())
                     {
+                        console.debug("Starting Anonymous load for " + this.getName());
                         // No script needed, we are complete
                         this.complete();
                     }
                     else
                     {
+                        console.debug("Starting script load for " + this.getName());
                         this.addScriptTag();
                     }
                 }
@@ -939,12 +975,12 @@ var require, define;
          * Resolved the definition supplied into a value
          */
         resolveDefinition : function(toDefinition)
-        {   
+        {
             if (david.utilities.isType(toDefinition, "Function"))
             {
                 // Update the status
                 var loArgs = this.getCallbackArguments();
-                console.debug("RESOLVING Definition for " + this.getName());                
+                console.debug("Resolving Definition for " + this.getName());
                 return toDefinition.apply(this.getDefinition(), loArgs.length > 1 ? loArgs.splice(1) : [this.getDefinition()]);
             }
             return toDefinition;
@@ -959,11 +995,11 @@ var require, define;
     // Clobber existing require
     require = function(taModules, toCallback)
     {
-        
+
         console.debug("REQUIRING : " + taModules.toString());
         var loConfig = !david.utilities.isType(taModules, "Array") && !david.utilities.isType(taModules, "String") ?
             taModules : null;
-        
+
         // Adjust the parameters if this was a configuration object
         if (loConfig != null)
         {
@@ -973,11 +1009,11 @@ var require, define;
                 toCallback = arguments[2];
             }
         }
-        
+
         var loReturn = david.Bootstrap.loadModule(taModules, toCallback);
         return loReturn == null ? null : loReturn.getDefinition();
     }
-    
+
     /**
      * Configures the require functionallity
      */
@@ -1011,7 +1047,7 @@ var require, define;
             }
         }
     };
-    
+
     // Set up some default david paths and configuration
     require.config({
         cachebuster : __CACHEBUSTER__,
@@ -1020,17 +1056,17 @@ var require, define;
         paths: {
             "underscore" : "/resources/inc/javascript/lib/underscore.js",
             "backbone" : "/resources/inc/javascript/lib/backbone-min.js",
-            "jquery" : "/resources/inc/javascript/lib/jquery-1.7.min.js"
+            "jquery" : "/resources/inc/javascript/lib/jquery.min.js"
         }
     });
-    
+
     // if a require exsisted already, then see if it can be used as a config
     if (typeof(m_oOldRequire) != "undefined")
     {
         require.config(m_oOldRequire);
         m_oOldRequire = null;
     }
-    
+
     // Clobber existing define
     define = function(tcModuleName, taDependencies, toCallback, tlForce)
     {
@@ -1055,15 +1091,10 @@ var require, define;
 
             if (llAnonymous)
             {
-                if (david.Bootstrap.outstanding)
-                {
-                    throw ("multiple anonymous definitions");
-                }
                 console.debug("DEFINE - storing anonymous module");
                 // TODO: Process the exports
                 // Store the anonymous module
-                david.Bootstrap.outstanding = 
-                    {
+                david.Bootstrap.outstanding = {
                         name : tcModuleName,
                         dependencies : taDependencies,
                         definition : toCallback
@@ -1078,8 +1109,8 @@ var require, define;
                     //taDependencies = ["require", "exports", "module"];
                 }
                 var loModule = david.Bootstrap.addModule({
-                    name:tcModuleName, 
-                    anonymous : true, 
+                    name:tcModuleName,
+                    anonymous : true,
                     dependencies: taDependencies,
                     definition : toCallback});
                 if (!loModule.isCompleted())
@@ -1091,6 +1122,7 @@ var require, define;
         }
         else
         {
+            console.debug("DEFINE - " + tcModuleName + " held back");
             var loFunction = function(){
                 define(tcModuleName, taDependencies, toCallback, true);
             };
@@ -1109,9 +1141,9 @@ var require, define;
         }
     };
     define.amd = {};
-    
-    
-    
+
+
+
     // TODO: implement loading of styles correctly
     // TOOD: implement loading of templates correctly
     // TODO: implement css dependencies
@@ -1144,36 +1176,38 @@ var require, define;
             document.getElementsByTagName("head")[0].appendChild(loTag);
         }
     }
-    
-    
-    
-    
-    
+
     /**
      * Set up all of the requirements for the david framework
      */
-    require(["order!jquery", "order!underscore"], function(toJQuery, toUnderscore)
+    require(["jquery", "underscore"], function(toJQ, toUnderscore)
     {
-        // Setup the variables for the jquery and underscore
         g_oBase.$jQ = jQuery.noConflict();
-        g_oBase._= toUnderscore;
-        
+        g_oBase._ = _.noConflict();
+
         // redefine jquery so it will return the correct object
         define("jquery", [], function(){
-            return $jQ;
+            return g_oBase.$jQ;
         }, true);
-        
-        // Backbone is problematic with the AMD version of underscore, so load it separately
+
+        // redefine underscore so it will return the correct object
+        define("underscore", [], function(){
+            return g_oBase._;
+        }, true);
+
+        // Backbone requires underscore to be completed and setup
         require(["backbone"], function(toBackbone)
         {
             g_oBase.$bb = Backbone.noConflict();
+
             define("backbone", function(){
-                return $bb;
+                return g_oBase.$bb;
             }, true);
+
             david.Bootstrap.unlock();
-            
+
             require(["david"]);
-            
+
             if (david.Bootstrap.closures != null)
             {
                 for (var i=0, lnLength = david.Bootstrap.closures.length; i<lnLength; i++)
@@ -1182,5 +1216,6 @@ var require, define;
                 }
             }
         });
+
     });
 })(this);
