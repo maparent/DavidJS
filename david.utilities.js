@@ -95,7 +95,7 @@ define(["jquery"],
             initialiseModule : function(toModule, toElement, tnIndex, toInitFunction, toInitConfig)
             {
                 toInitFunction = toInitFunction || "init";
-                toInitConfig = this.isType(toInitConfig, "Function") ? toInitConfig.call(toElement) : toInitConfig || {};
+                toInitConfig = this.isType(toInitConfig, "Function") ? toInitConfig.call(null, toElement) : toInitConfig || {};
                 if (toModule[toInitFunction])
                 {
                     toModule[toInitFunction].apply(toModule, [toElement, toInitConfig, tnIndex]);
