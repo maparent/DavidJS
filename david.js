@@ -17,6 +17,8 @@ define(["david.utilities", "underscore", "jquery",  "backbone"],
         var DAVIDPLUGIN = "data-module";
         // The name of the attribute to search for overriding the "init" function
         var INITOVERRIDE = "data-init";
+        // The name of the function to call for creating configuration parameters
+        var INITCONFIG = "data-config";
 
         /* look for and load any plugins, plugins are elements with an attribute data-module.
            Chose data-module to be similar to requireJS' data-main script loading.  In this
@@ -27,7 +29,7 @@ define(["david.utilities", "underscore", "jquery",  "backbone"],
         $jQ("[" + DAVIDPLUGIN + "]").each(function(tnIndex, toElement){
             toElement = $jQ(toElement);
             require(toElement.attr(DAVIDPLUGIN), function(toModule){
-                $du.initialiseModule(toModule, toElement, tnIndex, toElement.attr(INITOVERRIDE));
+                $du.initialiseModule(toModule, toElement, tnIndex, toElement.attr(INITOVERRIDE), window[toElement.attr(INITCONFIG)]);
             });
         });
 
@@ -358,7 +360,7 @@ define(["david.utilities", "underscore", "jquery",  "backbone"],
 
         })();
 
-        return function(){return david};
+        return david;
 
 // Ensure david namespace is defined
 ///**
