@@ -1123,6 +1123,7 @@ var require, define;
         else
         {
             console.debug("DEFINE - " + tcModuleName + " held back");
+
             var loFunction = function(){
                 define(tcModuleName, taDependencies, toCallback, true);
             };
@@ -1212,7 +1213,7 @@ var require, define;
             {
                 for (var i=0, lnLength = david.Bootstrap.closures.length; i<lnLength; i++)
                 {
-                    david.Bootstrap.closures[i].call();
+                    david.Bootstrap.closures[i].apply();
                 }
             }
         });

@@ -88,14 +88,17 @@ define(["jquery"],
             /**
              * Initialises toModule by calling toInitFunction or "init" passing the
              * element and index as a parmeter.  toModule should already be loaded
-             * for this call.
+             * for this call. toInitConfig can be configuration options, or a function
+             * that returns configuration options, if it exists, the options will be passed to the
+             * init function as well
              */
-            initialiseModule : function(toModule, toElement, tnIndex, toInitFunction)
+            initialiseModule : function(toModule, toElement, tnIndex, toInitFunction, toInitConfig)
             {
                 toInitFunction = toInitFunction || "init";
+                toInitConfig = this.isType(toInitConfig, "Function") ? toInitConfig.call(toElement) : toInitConfig || {};
                 if (toModule[toInitFunction])
                 {
-                    toModule[toInitFunction].apply(toModule, [toElement, tnIndex]);
+                    toModule[toInitFunction].apply(toModule, [toElement, toInitConfig, tnIndex]);
                 };
             },
             
