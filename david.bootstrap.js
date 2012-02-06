@@ -641,21 +641,33 @@ var require, define;
              */
             this.addLoadedCallback = function(toCallback)
             {
+                this.insertLoadedCallback(m_aLoadedCallbacks.length, toCallback);
+            };
+            
+            /**
+             * Inserts a callback at the specified index
+             */
+            this.insertLoadedCallback = function(tnIndex, toCallback)
+            {
                 if (!toCallback) {return;}
-
-                console.debug("Adding callback to " + this.getName());
+                
+                tnIndex = tnIndex < 0 ? 0 : tnIndex;
+                tnIndex = tnIndex > m_aLoadedCallbacks.length ? m_aLoadedCallbacks : tnIndex;
+                
+                console.debug("Adding callback at index " + tnIndex + " to " + this.getName());
+                
                 if (m_aLoadedCallbacks.indexOf(toCallback) < 0)
                 {
-                    m_aLoadedCallbacks[m_aLoadedCallbacks.length] = toCallback;
+                    m_aLoadedCallbacks.splice(tnIndex, 0, toCallback);
                 }
-
+                
                 // If the module is already completed then just execute the callbacks
                 if (this.isCompleted())
                 {
                     console.debug("Module is completed, executing callbacks");
                     this.executeLoadedCallbacks();
                 }
-            }
+            };
 
             /**
              * Checks if there are oustanding callbacks
@@ -871,15 +883,9 @@ var require, define;
                                 loModule.addDependency(loOutstanding.dependencies[i]);
                             }
                         }
+                        
                         loModule.setAnonymous(true);
-                        if (!loModule.hasCallbackFunctions())
-                        {
-                            loModule.addLoadedCallback(loOutstanding.definition);
-                        }
-                        else
-                        {
-                            loModule.setDefinition(loModule.resolveDefinition(loOutstanding.definition));
-                        }
+                        loModule.insertLoadedCallback(0, loOutstanding.definition);
                     }
 
                     // Detach events
